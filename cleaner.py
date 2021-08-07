@@ -1,4 +1,4 @@
-from time import sleep
+from time import sleep, time
 from os import getenv
 
 from pyrogram import Client
@@ -46,45 +46,44 @@ class Cleaner:
 
         return [d.chat for d in dialogs]
 
-    def select_groups(self):
+    def select_groups(self, all_groups=False):
         chats = self.get_all_chats()
         groups = [c for c in chats if c.type in ('group', 'supergroup')]
 
-        print('Delete all your messages in')
-        for i, group in enumerate(groups):
-            print(f'  {i+1}. {group.title}')
-
-        print(
-            f'  {len(groups) + 1}. '
-            '(!) DELETE ALL YOUR MESSAGES IN ALL OF THOSE GROUPS (!)\n'
-        )
-
-        n = int(input('Insert option number: '))
-        if not 1 <= n <= len(groups) + 1:
-            print('Invalid option selected. Exiting...')
-            exit(-1)
-
-        if n == len(groups) + 1:
-            print('\nTHIS WILL DELETE ALL YOUR MESSSAGES IN ALL GROUPS!')
-            answer = input('Please type "I understand" to proceed: ')
-            if answer.upper() != 'I UNDERSTAND':
-                print('Better safe than sorry. Aborting...')
-                exit(-1)
+        if all_groups:
             self.chats = groups
         else:
-            self.chats = [groups[n - 1]]
+            print('Delete all your messages in')
+            for i, group in enumerate(groups):
+                print(f' {i+1}. {group.title}')
+
+            print(
+                f' {len(groups) + 1}. '
+                '(!) DELETE ALL YOUR MESSAGES IN ALL OF THOSE GROUPS (!)\n'
+            )
+
+            n = int(input('Insert option number: '))
+            if not 1 <= n <= len(groups) + 1:
+                print('Invalid option selected. Exiting...')
+                exit(-1)
+
+            if n == len(groups) + 1:
+                # THIS WILL DELETE ALL YOUR MESSAGES IN ALL GROUPS!
+                self.chats = groups
+            else:
+                self.chats = [groups[n - 1]]
 
         groups_str = ', '.join(c.title for c in self.chats)
         print(f'\nSelected {groups_str}.\n')
 
-    def run(self):
+    def run(self, min_age_mins):
         for chat in self.chats:
             peer = app.resolve_peer(chat.id)
             message_ids = []
             add_offset = 0
 
             while True:
-                q = self.search_messages(peer, add_offset)
+                q = self.search_messages(peer, add_offset, min_age_mins)
                 message_ids.extend(msg.id for msg in q['messages'])
                 messages_count = len(q['messages'])
                 print(f'Found {messages_count} of your messages in "{chat.title}"')
@@ -103,7 +102,7 @@ class Cleaner:
             except FloodWait as flood_exception:
                 sleep(flood_exception.x)
 
-    def search_messages(self, peer, add_offset):
+    def search_messages(self, peer, add_offset, min_age_mins=0):
         print(f'Searching messages. OFFSET: {add_offset}')
         return app.send(
             Search(
@@ -111,7 +110,7 @@ class Cleaner:
                 q='',
                 filter=InputMessagesFilterEmpty(),
                 min_date=0,
-                max_date=0,
+                max_date=int(time()-(60*min_age_mins)),
                 offset_id=0,
                 add_offset=add_offset,
                 limit=self.search_chunk_size,
@@ -127,10 +126,11 @@ class Cleaner:
 if __name__ == '__main__':
     try:
         deleter = Cleaner()
-        deleter.select_groups()
-        deleter.run()
+        deleter.select_groups(all_groups=True)
+        deleter.run(min_age_mins=60*24)
     except UnknownError as e:
         print(f'UnknownError occured: {e}')
         print('Probably API has changed, ask developers to update this utility')
     finally:
         app.stop()
+
